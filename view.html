@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Shared note</title>
+  <link rel="stylesheet" href="design-system.css">
+  <link rel="stylesheet" href="app.css">
+  <link rel="stylesheet" href="public.css">
+</head>
+<body class="cr-page">
+  <main class="public">
+    <article id="content" class="hidden">
+      <h1 id="title" class="cr-h1 hidden"></h1>
+      <div id="body" class="rte"></div>
+    </article>
+    <p id="missing" class="public-missing hidden">This page isn't available. The link may be incomplete or the note may have been removed.</p>
+  </main>
+
+  <script src="codec.js"></script>
+  <script src="sanitize.js"></script>
+  <script src="public.js"></script>
+</body>
+</html>

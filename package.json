@@ -1,0 +1,13 @@
+{
+  "name": "pastetolink",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Static Paste to Link app with lightweight Vercel API functions",
+  "scripts": {
+    "dev": "npx --yes vercel@latest dev",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

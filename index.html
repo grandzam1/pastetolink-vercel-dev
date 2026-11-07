@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Paste to Link</title>
+  <meta name="description" content="Write or paste notes and share them with short links. No server, no sign-in.">
+  <link rel="stylesheet" href="design-system.css">
+  <link rel="stylesheet" href="app.css">
+</head>
+<body class="cr-page">
+  <main class="app">
+
+    <header class="topnav">
+      <a class="brand cr-overline" href="#/">Paste to Link</a>
+    </header>
+
+    <details class="cr-card" style="margin-bottom:20px">
+      <summary>API settings (write access)</summary>
+      <div class="stack" style="margin-top:12px">
+        <label class="cr-label" for="writeToken">Write token (kept in this tab only)</label>
+        <input id="writeToken" class="cr-input" type="password" autocomplete="off" placeholder="Enter APP_WRITE_TOKEN to enable cloud writes">
+        <p class="note">The token is sent only to this app's API. JSONBin credentials stay on the server.</p>
+      </div>
+    </details>
+
+    <!-- All notes -->
+    <section id="list" class="hidden">
+      <div class="row row--between page-head">
+        <h1 class="cr-h1">Your notes</h1>
+        <a class="cr-btn cr-btn--primary" href="#/new">New note</a>
+      </div>
+      <p style="margin:-8px 0 16px"><span id="syncBadge" class="cr-badge cr-badge--muted hidden"></span></p>
+      <div class="stack">
+        <input id="search" class="cr-input" type="search" placeholder="Search notes..." aria-label="Search notes" autocomplete="off">
+        <div id="noteList" class="stack"></div>
+
+        <div class="row row--between footer-row">
+          <p class="note grow">Notes are saved in this browser and, when cloud sync is set up, in your JSONBin so public links work for everyone. You can also Export them to <code>notes.json</code>.</p>
+          <div class="row">
+            <button id="syncBtn" class="cr-btn cr-btn--secondary hidden" type="button">Sync now</button>
+            <button id="exportBtn" class="cr-btn cr-btn--secondary" type="button">Export</button>
+            <button id="importBtn" class="cr-btn cr-btn--secondary" type="button">Import</button>
+            <input id="importFile" type="file" accept="application/json,.json" class="hidden">
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Read one note -->
+    <section id="view" class="hidden">
+      <div class="stack">
+        <a class="back" href="#/">&larr; All notes</a>
+        <div>
+          <h1 id="viewTitle" class="cr-h1"></h1>
+          <p id="viewMeta" class="note" style="margin-top:8px"></p>
+        </div>
+        <div class="row">
+          <button id="editBtn" class="cr-btn cr-btn--primary" type="button">Edit</button>
+          <button id="copyLinkBtn" class="cr-btn cr-btn--secondary" type="button" title="Copies the public, read-only link">Copy public link</button>
+          <button id="previewBtn" class="cr-btn cr-btn--secondary" type="button">Preview public page</button>
+          <button id="portableBtn" class="cr-btn cr-btn--secondary" type="button" title="A long link that works anywhere, without notes.json">Copy portable link</button>
+          <button id="copyTextBtn" class="cr-btn cr-btn--secondary" type="button">Copy text</button>
+          <button id="downloadBtn" class="cr-btn cr-btn--secondary" type="button">Download .txt</button>
+          <button id="deleteBtn" class="cr-btn cr-btn--secondary" type="button">Delete</button>
+        </div>
+        <div id="viewBody" class="rte cr-card"></div>
+        <p class="note">The public link shows only this note, with no editing. It opens for everyone once this note has synced to the cloud (or is in the project's <code>notes.json</code>). The portable link works anywhere right now, but it is longer.</p>
+      </div>
+    </section>
+
+    <!-- Create / edit -->
+    <section id="edit" class="hidden">
+      <div class="stack">
+        <h1 id="editHeading" class="cr-h1">New note</h1>
+        <div>
+          <label class="cr-label" for="titleInput">Title</label>
+          <input id="titleInput" class="cr-input" type="text" maxlength="200" placeholder="Untitled" autocomplete="off">
+        </div>
+        <div>
+          <span class="cr-label">Content</span>
+          <div id="editorMount"></div>
+        </div>
+        <div class="row">
+          <button id="saveBtn" class="cr-btn cr-btn--primary" type="button">Save</button>
+          <button id="cancelBtn" class="cr-btn cr-btn--secondary" type="button">Cancel</button>
+          <span class="note">Ctrl+S to save</span>
+        </div>
+        <div class="stack">
+          <span class="cr-label">Save as a direct file</span>
+          <div class="row">
+            <label class="note" for="fileFormat">Format</label>
+            <select id="fileFormat" class="cr-input" aria-label="File format">
+              <option value="txt">.txt</option>
+              <option value="json">.json</option>
+              <option value="md">.md</option>
+            </select>
+            <button id="saveFileBtn" class="cr-btn cr-btn--secondary" type="button">Save file</button>
+            <button id="deleteFileBtn" class="cr-btn cr-btn--secondary hidden" type="button">Delete file</button>
+            <button id="newFileBtn" class="cr-btn cr-btn--secondary hidden" type="button">New file</button>
+          </div>
+          <div id="fileLinkPanel" class="row hidden">
+            <input id="fileUrl" class="cr-input" type="url" readonly aria-label="Direct file URL">
+            <button id="copyFileUrlBtn" class="cr-btn cr-btn--secondary" type="button">Copy URL</button>
+          </div>
+          <div class="stack">
+            <label class="note" for="loadFileUrl">Open an existing file to edit or delete it</label>
+            <div class="row">
+              <input id="loadFileUrl" class="cr-input" type="url" placeholder="Paste a direct /files/... URL">
+              <button id="loadFileBtn" class="cr-btn cr-btn--secondary" type="button">Load file</button>
+            </div>
+          </div>
+          <p class="note">JSON is validated before saving. Saving the same file again updates it; changing format requires creating a new file.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Opened from an old or portable link -->
+    <section id="shared" class="hidden">
+      <div class="stack">
+        <div>
+          <span class="cr-badge cr-badge--info">Shared with you</span>
+          <h1 id="sharedTitle" class="cr-h1 hidden" style="margin-top:12px"></h1>
+        </div>
+        <div class="row">
+          <button id="sharedSaveBtn" class="cr-btn cr-btn--primary" type="button">Save to my notes</button>
+          <button id="sharedCopyBtn" class="cr-btn cr-btn--secondary" type="button">Copy text</button>
+          <button id="sharedDownloadBtn" class="cr-btn cr-btn--secondary" type="button">Download .txt</button>
+          <a class="cr-btn cr-btn--secondary" href="#/">All notes</a>
+        </div>
+        <div id="sharedBody" class="rte cr-card"></div>
+      </div>
+    </section>
+
+    <!-- Errors and not-found -->
+    <section id="message" class="hidden">
+      <div class="cr-card stack">
+        <span id="msgBadge" class="cr-badge cr-badge--danger"></span>
+        <p id="msgText" style="margin:0"></p>
+        <div class="row">
+          <a class="cr-btn cr-btn--primary" href="#/">All notes</a>
+          <a class="cr-btn cr-btn--secondary" href="#/new">New note</a>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <div id="toast" class="toast hidden" role="status" aria-live="polite">
+    <span id="toastMsg"></span>
+    <button id="toastAct" class="cr-btn cr-btn--secondary toast-act hidden" type="button"></button>
+  </div>
+
+  <script src="/api/config.js"></script>
+  <script src="codec.js"></script>
+  <script src="sanitize.js"></script>
+  <script src="cloud.js"></script>
+  <script src="store.js"></script>
+  <script src="editor.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

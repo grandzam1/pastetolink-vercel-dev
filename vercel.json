@@ -1,0 +1,8 @@
+{
+  "rewrites": [
+    {
+      "source": "/files/:file",
+      "destination": "/api/files?file=:file"
+    }
+  ]
+}

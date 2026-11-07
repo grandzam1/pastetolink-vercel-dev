@@ -1,0 +1,35 @@
+/* Public, read-only page. Reader styles (.rte) come from app.css */
+
+.public {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 48px 20px 96px;
+}
+
+.public .cr-h1 {
+  margin-bottom: 24px;
+  font-size: 32px;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.public .rte {
+  font-size: 17px;
+  line-height: 1.75;
+}
+
+.public-missing {
+  margin: 48px 0;
+  color: var(--c-text-muted);
+  text-align: center;
+}
+
+@media (min-width: 768px) {
+  .public {
+    padding-top: 72px;
+  }
+
+  .public .cr-h1 {
+    font-size: 40px;
+  }
+}
