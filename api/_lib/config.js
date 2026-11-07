@@ -3,53 +3,33 @@ function env(name, fallback = "") {
   return value == null || value === "" ? fallback : value;
 }
 
-function jsonbinBaseUrl() {
-  return env("JSONBIN_API_BASE_URL");
+function tursoDatabaseUrl() {
+  return env("TURSO_DATABASE_URL");
 }
 
-function jsonbinKeyHeader() {
-  return env("JSONBIN_KEY_HEADER", "X-Access-Key");
-}
-
-function jsonbinApiKey() {
-  return env("JSONBIN_API_KEY");
-}
-
-function notesBinId() {
-  return env("JSONBIN_NOTES_BIN_ID");
-}
-
-function filesBinId() {
-  return env("JSONBIN_FILES_BIN_ID");
+function tursoAuthToken() {
+  return env("TURSO_AUTH_TOKEN");
 }
 
 function writeToken() {
   return env("APP_WRITE_TOKEN");
 }
 
-function storageReady() {
-  return Boolean(jsonbinBaseUrl() && jsonbinApiKey());
-}
-
 function publicConfig() {
-  const notes = storageReady() && Boolean(notesBinId());
-  const files = storageReady() && Boolean(filesBinId());
-  const canWrite = Boolean(writeToken());
+  const enabled = Boolean(tursoDatabaseUrl());
+  const canWrite = enabled && Boolean(writeToken());
   return {
-    CLOUD_ENABLED: notes,
-    CLOUD_WRITABLE: notes && canWrite,
-    FILES_ENABLED: files,
-    FILES_WRITABLE: files && canWrite,
+    CLOUD_ENABLED: enabled,
+    CLOUD_WRITABLE: canWrite,
+    FILES_ENABLED: enabled,
+    FILES_WRITABLE: canWrite,
   };
 }
 
 module.exports = {
   env,
-  jsonbinBaseUrl,
-  jsonbinKeyHeader,
-  jsonbinApiKey,
-  notesBinId,
-  filesBinId,
+  tursoDatabaseUrl,
+  tursoAuthToken,
   writeToken,
   publicConfig,
 };

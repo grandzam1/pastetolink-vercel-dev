@@ -1,35 +1,20 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
 
-process.env.JSONBIN_API_BASE_URL = "https://jsonbin.test/v3/b";
-process.env.JSONBIN_NOTES_BIN_ID = "notes-test-bin";
-process.env.JSONBIN_FILES_BIN_ID = "files-test-bin";
-process.env.JSONBIN_API_KEY = "test-jsonbin-secret";
-process.env.JSONBIN_KEY_HEADER = "X-Access-Key";
+const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "pastetolink-sqlite-test-"));
+process.env.TURSO_DATABASE_URL = "file:" + path.join(tempDir, "test.db");
+process.env.TURSO_AUTH_TOKEN = "";
 process.env.APP_WRITE_TOKEN = "test-app-write-token";
 process.env.MAX_FILE_BYTES = "262144";
 
 const fileHandler = require("../api/files");
 const notesHandler = require("../api/notes");
 const runtimeConfigHandler = require("../api/config");
-const bins = {
-  "notes-test-bin": { version: 1, notes: [] },
-  "files-test-bin": { version: 1, files: {} },
-};
-const sentHeaders = [];
-
-global.fetch = async (url, options = {}) => {
-  const match = String(url).match(/\/v3\/b\/([^/]+)(\/latest)?$/);
-  assert.ok(match, "JSONBin URL should use the configured base");
-  const binId = decodeURIComponent(match[1]);
-  sentHeaders.push(options.headers || {});
-  if (options.method === "PUT") bins[binId] = JSON.parse(options.body);
-  const record = bins[binId];
-  return new Response(JSON.stringify({ record }), {
-    status: record ? 200 : 404,
-    headers: { "Content-Type": "application/json" },
-  });
-};
+const healthHandler = require("../api/health");
+const database = require("../api/_lib/database");
 
 function mockResponse() {
   return {
@@ -62,7 +47,7 @@ async function call(handler, req) {
 
 function jsonBody(res) { return JSON.parse(res.body); }
 
- test("file API creates a URL, returns raw content with the right MIME type, then updates and deletes it", async () => {
+test("file API creates a URL, serves raw content, updates, and deletes from SQLite", async () => {
   const created = await call(fileHandler, request("POST", { body: { ext: "txt", content: "hello\nworld" } }));
   assert.equal(created.statusCode, 201);
   const file = jsonBody(created);
@@ -87,7 +72,7 @@ function jsonBody(res) { return JSON.parse(res.body); }
   assert.equal(missing.statusCode, 404);
 });
 
-test("JSON files are validated and served as application/json", async () => {
+test("JSON files validate JSON and use the JSON MIME type", async () => {
   const invalid = await call(fileHandler, request("POST", { body: { ext: "json", content: "{bad" } }));
   assert.equal(invalid.statusCode, 400);
   assert.match(jsonBody(invalid).error, /valid JSON/);
@@ -99,7 +84,7 @@ test("JSON files are validated and served as application/json", async () => {
   assert.equal(JSON.parse(fetched.body).ok, true);
 });
 
-test("Markdown files are served as text/markdown", async () => {
+test("Markdown files use text/markdown", async () => {
   const created = await call(fileHandler, request("POST", { body: { ext: "md", content: "# Heading" } }));
   const file = jsonBody(created);
   const fetched = await call(fileHandler, request("GET", { file: `${file.id}.md`, authorization: "" }));
@@ -107,32 +92,55 @@ test("Markdown files are served as text/markdown", async () => {
   assert.equal(fetched.body, "# Heading");
 });
 
-test("write operations require the app token; public GET does not", async () => {
+test("write operations require the app token while public file GET does not", async () => {
   const denied = await call(fileHandler, request("POST", {
     body: { ext: "md", content: "# test" },
     authorization: "Bearer wrong",
   }));
   assert.equal(denied.statusCode, 401);
   assert.equal(jsonBody(denied).error, "A valid Bearer token is required");
-  assert.ok(sentHeaders.some((headers) => headers["X-Access-Key"] === "test-jsonbin-secret"));
 });
 
-test("notes API keeps note reads public but protects writes", async () => {
+test("notes API writes and reads notes from SQLite and protects writes", async () => {
+  const note = { id: "abc123", title: "Test note", html: "<p>Saved in SQLite</p>", created: 1, updated: 2 };
+  const written = await call(notesHandler, request("PUT", { body: { version: 1, notes: [note] } }));
+  assert.equal(written.statusCode, 200);
+
   const read = await call(notesHandler, request("GET", { authorization: "" }));
   assert.equal(read.statusCode, 200);
-  assert.deepEqual(jsonBody(read).notes, []);
+  assert.deepEqual(jsonBody(read).notes, [note]);
 
-  const denied = await call(notesHandler, request("PUT", {
-    body: { version: 1, notes: [] },
-    authorization: "",
-  }));
+  const denied = await call(notesHandler, request("PUT", { body: { version: 1, notes: [] }, authorization: "" }));
   assert.equal(denied.statusCode, 401);
+
+  const invalid = await call(notesHandler, request("PUT", { body: { notes: [{ id: "x" }] } }));
+  assert.equal(invalid.statusCode, 400);
 });
 
-test("browser runtime config contains flags only, not storage credentials or bin IDs", async () => {
+test("runtime config exposes capability flags but no database URL, token, or local path", async () => {
   const res = await call(runtimeConfigHandler, request("GET", { authorization: "" }));
   assert.equal(res.statusCode, 200);
   assert.match(res.headers["content-type"], /javascript/);
   assert.match(res.body, /FILES_WRITABLE/);
-  assert.doesNotMatch(res.body, /test-jsonbin-secret|notes-test-bin|files-test-bin|test-app-write-token/);
+  assert.doesNotMatch(res.body, /test-app-write-token|pastetolink-sqlite-test|TURSO_AUTH_TOKEN/);
+});
+
+test("health endpoint confirms SQLite connectivity", async () => {
+  const res = await call(healthHandler, request("GET", { authorization: "" }));
+  assert.equal(res.statusCode, 200);
+  assert.deepEqual(jsonBody(res), {
+    ok: true,
+    database: "connected",
+    notesWritable: true,
+    filesWritable: true,
+  });
+});
+
+test.after(async () => {
+  await database.close();
+  try {
+    fs.rmSync(tempDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+  } catch (error) {
+    if (error.code !== "EPERM") throw error;
+  }
 });

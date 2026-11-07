@@ -1,67 +1,79 @@
 # Paste to Link
 
-A lightweight static dashboard for writing and sharing notes, with Vercel serverless endpoints for cloud sync and public raw files. The existing HTML/CSS/JavaScript UI remains in the repository root; there is no build step.
+A lightweight static dashboard for writing and sharing notes, with Vercel serverless endpoints for note sync and direct public files. The existing HTML/CSS/JavaScript application remains in the repository root. There is no frontend build step.
 
 ## Project structure
 
 ```text
-api/                 Vercel serverless functions
-  _lib/              Environment, HTTP and JSONBin helpers
-  config.js          Safe runtime capability flags for the browser
-  files.js           File create/update/delete and raw file GET handler
-  health.js          Readiness status without secrets
-  notes.js           Same-origin notes API
-app.js, editor.js    Existing dashboard and editor
-cloud.js             Same-origin API client (no JSONBin credentials)
-public.js            Read-only note page
-.env.example         Names and example values for local/Vercel settings
-vercel.json          /files/{id}.{ext} route rewrite
+api/                  Vercel serverless functions
+  _lib/config.js      Server-only environment configuration
+  _lib/database.js    SQLite/Turso schema and data operations
+  _lib/http.js        HTTP and write-token helpers
+  config.js           Safe runtime capability flags for the browser
+  files.js            File create/update/delete and raw GET handler
+  health.js           Database connection check
+  notes.js            Same-origin notes API
+dev-server.js         Login-free local HTTP runner using the same API handlers
+app.js, editor.js     Dashboard and rich-text editor
+cloud.js              Same-origin notes API client
+.env.example          Local SQLite and production Turso settings
+vercel.json           /files/{id}.{ext} route rewrite
 ```
 
 ## Local development
 
 Requires Node.js 20 or newer and npm.
 
-1. Copy `.env.example` to `.env.local`.
-2. Fill in the JSONBin values and choose a long random `APP_WRITE_TOKEN`. Use a rotated JSONBin key; do not reuse a key that was ever committed or shared.
-3. Run `npm install` once. If the Vercel CLI asks, authenticate with `npx vercel login` and link/create a Vercel project with `npx vercel link`.
-4. Run `npm run dev` and open `http://localhost:3000`.
+```bash
+cp .env.example .env.local
+# Keep the default file: URL for local SQLite. Replace APP_WRITE_TOKEN with a long random value.
+npm install
+npm run dev
+```
 
-`.env.local` is ignored by Git. Keep the same variable names in Vercel Project Settings → Environment Variables. After linking the project with the Vercel CLI, `vercel env pull .env.local` can populate local values from Vercel.
+Open `http://localhost:3000`. The local runner serves the static dashboard and routes API calls to the same Vercel function handlers. The SQLite database is created automatically at `data/pastetolink.db` and is ignored by Git. No Turso account, Vercel login, or cloud database is required for local testing.
 
 ### Environment variables
 
-| Variable | Purpose |
-| --- | --- |
-| `JSONBIN_API_BASE_URL` | JSONBin API base, normally `https://api.jsonbin.io/v3/b` |
-| `JSONBIN_NOTES_BIN_ID` | Existing notes bin ID |
-| `JSONBIN_FILES_BIN_ID` | Dedicated files bin ID; keep files separate from notes to avoid sync overwrites |
-| `JSONBIN_API_KEY` | Server-only JSONBin access key with access to both bins |
-| `JSONBIN_KEY_HEADER` | `X-Access-Key` (recommended) or `X-Master-Key` |
-| `APP_WRITE_TOKEN` | Bearer token required for note and file writes; never embed it in source |
-| `MAX_FILE_BYTES` | Maximum file content size; defaults to 262144 bytes |
+| Variable | Local development | Vercel production |
+| --- | --- | --- |
+| `TURSO_DATABASE_URL` | `file:./data/pastetolink.db` | Turso URL such as `libsql://your-database-your-org.turso.io` |
+| `TURSO_AUTH_TOKEN` | Leave empty for a local SQLite file | Token for the selected Turso database |
+| `APP_WRITE_TOKEN` | Long random string you enter in the dashboard’s API settings | Long random secret set in Vercel environment variables |
+| `MAX_FILE_BYTES` | Optional; defaults to 262144 | Optional; defaults to 262144 |
 
-Create a notes bin containing `{"version":1,"notes":[]}` and a separate files bin containing `{"version":1,"files":{}}`. The API will use those existing JSONBin records; JSONBin remains the data store.
+The server opens the same libSQL-compatible client in both environments. The browser receives only capability flags. It never receives the Turso URL, Turso token, or app write token from server configuration.
+
+To make a hosted Turso database, create one in Turso and set the URL and generated auth token in Vercel Project Settings → Environment Variables. Never put the remote token in a `VITE_`/public variable or commit it. Use the same variable names locally if you intentionally want to develop against that remote database; that may use your Turso quota. The default local SQLite file is safer for ordinary development.
+
+## Database schema and data
+
+On first request, the API creates two tables: `notes` stores the existing note IDs, title, sanitized HTML, and timestamps; `files` stores each file ID, extension, content, and timestamps. Creating or updating app content writes directly to the database.
+
+The old JSONBin integration is removed. Before moving an existing set of notes, export them from the old app as `notes.json`. In the new app, open the dashboard, use **Import**, and select that JSON file. Once imported, the notes are saved through the same-origin API into SQLite/Turso. Files already saved in JSONBin are not automatically copied; download/export their contents and save them again through the new file controls.
 
 ## Direct file endpoints
 
 - `POST /api/files` with `Authorization: Bearer <APP_WRITE_TOKEN>` and JSON body `{"ext":"txt|json|md","content":"..."}` creates a file and returns its ID and URL.
-- `GET /files/{id}.txt`, `.json`, or `.md` is public, returns the raw content (not an HTML viewer), sets the matching `Content-Type`, and permits cross-origin GETs.
+- `GET /files/{id}.txt`, `.json`, or `.md` is public. It returns raw file contents with the matching `Content-Type` and allows cross-origin reads.
 - `PUT /api/files?file={id}.{ext}` with the same bearer token updates a file.
 - `DELETE /api/files?file={id}.{ext}` with the same bearer token deletes a file.
 
-The dashboard’s **Save file** controls use those endpoints. `.txt` saves plain text, `.md` converts the editor formatting to Markdown, and `.json` validates then pretty-prints valid JSON. The direct URL is generated from the active request/environment, not a hardcoded domain. The app keeps the write token in session storage only; it is not committed or sent to JSONBin from the browser. To edit or delete a file after reloading the dashboard, paste its direct URL into **Open an existing file**.
+The dashboard’s **Save file** controls use those endpoints. `.txt` saves plain text, `.md` converts editor formatting to Markdown, and `.json` validates and pretty-prints valid JSON. The direct URL uses the active request host, not a hardcoded localhost or production domain. To update/delete a file after reloading the dashboard, paste its direct URL into **Open an existing file**.
 
-The token is required for writes because otherwise anyone could overwrite or delete public files. Public GET remains unauthenticated for scripts, integrations, and AI agents.
+Public GET is unauthenticated so scripts, integrations, and AI agents can fetch the file. Writes require the token to prevent strangers from overwriting or deleting public files. The app keeps the token in session storage for the current tab.
 
-## Notes and existing behavior
+## Tests and deployment
 
-The notes dashboard, local browser storage, import/export, rich-text editor, portable links, and read-only `view.html` remain. Notes sync now uses `/api/notes`, which keeps JSONBin credentials on the server. Without cloud environment variables, browser-local notes and static `notes.json` still work; cloud sync and file storage report as unavailable.
+```bash
+npm test
+npm run dev
+```
 
-## Production hosting limitation
+`npm test` uses temporary SQLite databases and exercises the API over real SQL. For the Vercel CLI runtime, use `npm run dev:vercel` after installing/linking/authenticating the Vercel project. Deployment to Vercel requires setting the Turso URL, Turso auth token, and app write token in Vercel’s environment settings.
 
-GitHub Pages only serves static files and cannot run this API or accept file writes. Deploy the same repository to Vercel (Git integration can deploy without GitHub Actions) and set the environment variables there. Vercel serves the dashboard and `/files/...` endpoints from the same origin. Local API testing uses `vercel dev` via `npm run dev`.
+GitHub Pages cannot run the API or persist writes. Deploy the repository to Vercel (Git integration works without GitHub Actions) to use the same-origin `/api/...` and `/files/...` URLs in production.
 
-## Security note for existing checkouts
+## Security note
 
-Older versions used `config.js` for a browser-side JSONBin key. If that file/key was ever committed to a public repository, treat the key as exposed and rotate it at JSONBin. The new setup does not use or commit `config.js`; keep `.env.local` private.
+Older versions used a browser-side JSONBin key in `config.js`. If that key was ever committed to a public repository, treat it as exposed and rotate/revoke it. This version does not use JSONBin and does not include any credentials in source.

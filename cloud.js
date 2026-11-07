@@ -1,5 +1,5 @@
 /*
-  Cloud: same-origin JSON API. JSONBin credentials never reach the browser;
+  Cloud: same-origin JSON API. Database credentials never reach the browser;
   the Vercel functions proxy reads and writes using server environment values.
 */
 (function (root) {

@@ -3,7 +3,7 @@
 
   Layers, from lowest to highest:
     1. notes.json in the project (fallback)
-    2. the cloud bin (JSONBin), when configured: the shared copy
+    2. the server database (local SQLite in development, Turso in production)
     3. a local cache of the last cloud copy (for offline)
     4. this browser's pending changes, which win when newer
 

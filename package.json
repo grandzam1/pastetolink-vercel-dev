@@ -2,10 +2,15 @@
   "name": "pastetolink",
   "version": "1.0.0",
   "private": true,
-  "description": "Static Paste to Link app with lightweight Vercel API functions",
+  "description": "Static Paste to Link app with SQLite/Turso persistence",
   "scripts": {
-    "dev": "npx --yes vercel@latest dev",
-    "test": "node --test"
+    "dev": "node dev-server.js",
+    "dev:vercel": "npx --yes vercel@latest dev",
+    "test": "node --test",
+    "start": "node dev-server.js"
+  },
+  "dependencies": {
+    "@libsql/client": "^0.18.0"
   },
   "engines": {
     "node": ">=20"

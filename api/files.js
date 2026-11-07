@@ -1,6 +1,6 @@
 const crypto = require("node:crypto");
-const { filesBinId, env } = require("./_lib/config");
-const { readBin, writeBin } = require("./_lib/jsonbin");
+const { env, publicConfig } = require("./_lib/config");
+const { createFile, getFile, updateFile, deleteFile } = require("./_lib/database");
 const { setCors, sendJson, readJson, hasWriteAccess, preflight } = require("./_lib/http");
 
 const TYPES = {
@@ -8,23 +8,13 @@ const TYPES = {
   json: "application/json; charset=utf-8",
   md: "text/markdown; charset=utf-8",
 };
-const ID_RE = /^[a-f0-9]{16}$/;
 const MAX_BYTES = Math.max(1024, Number(env("MAX_FILE_BYTES", "262144")) || 262144);
 
 function queryValue(value) { return Array.isArray(value) ? value[0] : value; }
 
 function parseFileRef(value) {
   const match = String(value || "").match(/^([a-f0-9]{16})\.(txt|json|md)$/i);
-  if (!match) return null;
-  return { id: match[1].toLowerCase(), ext: match[2].toLowerCase() };
-}
-
-function normalizeRecord(record) {
-  if (!record || typeof record !== "object" || Array.isArray(record)) return { version: 1, files: {} };
-  const files = record.files && typeof record.files === "object" && !Array.isArray(record.files)
-    ? record.files
-    : {};
-  return { version: 1, files };
+  return match ? { id: match[1].toLowerCase(), ext: match[2].toLowerCase() } : null;
 }
 
 function urlFor(req, ref) {
@@ -42,32 +32,29 @@ function publicHeaders(res, ext, filename) {
   res.setHeader("X-Content-Type-Options", "nosniff");
 }
 
-function storageError(res, error) {
-  const status = error.status === 404 ? 404 : 502;
-  return sendJson(res, status, { error: status === 404 ? "File storage not found" : "File storage is unavailable" });
-}
-
 function validateContent(content, ext) {
   if (typeof content !== "string") return "Content must be a string";
   if (Buffer.byteLength(content, "utf8") > MAX_BYTES) return `Content exceeds the ${MAX_BYTES}-byte limit`;
   if (ext === "json") {
-    try { JSON.parse(content); } catch (e) { return "Content is not valid JSON"; }
+    try { JSON.parse(content); } catch (error) { return "Content is not valid JSON"; }
   }
   return "";
 }
 
+function unavailable(res) {
+  return sendJson(res, 503, { error: "Database is not configured or unavailable" });
+}
+
 module.exports = async function handler(req, res) {
   if (preflight(req, res)) return;
-  const binId = filesBinId();
-  if (!binId) return sendJson(res, 503, { error: "File storage is not configured" });
-
+  if (!publicConfig().FILES_ENABLED) return unavailable(res);
   const ref = parseFileRef(queryValue(req.query && req.query.file));
 
   if (req.method === "GET") {
     if (!ref) return sendJson(res, 400, { error: "Use /files/{id}.{txt|json|md}" });
     try {
-      const stored = normalizeRecord(await readBin(binId, { version: 1, files: {} })).files[ref.id];
-      if (!stored || stored.ext !== ref.ext || typeof stored.content !== "string") {
+      const stored = await getFile(ref.id);
+      if (!stored || stored.ext !== ref.ext) {
         setCors(res);
         return sendJson(res, 404, { error: "File not found" });
       }
@@ -75,7 +62,7 @@ module.exports = async function handler(req, res) {
       res.statusCode = 200;
       return res.end(stored.content);
     } catch (error) {
-      return storageError(res, error);
+      return unavailable(res);
     }
   }
 
@@ -95,42 +82,35 @@ module.exports = async function handler(req, res) {
       const contentError = validateContent(body.content, ext);
       if (contentError) return sendJson(res, 400, { error: contentError });
 
-      const record = normalizeRecord(await readBin(binId, { version: 1, files: {} }));
-      let id;
-      do { id = crypto.randomBytes(8).toString("hex"); } while (record.files[id]);
+      const id = crypto.randomBytes(8).toString("hex");
       const now = new Date().toISOString();
-      record.files[id] = { ext, content: body.content, createdAt: now, updatedAt: now };
-      await writeBin(binId, record);
-      const file = { id, ext, url: urlFor(req, { id, ext }), createdAt: now, updatedAt: now };
-      return sendJson(res, 201, file);
+      await createFile({ id, ext, content: body.content, createdAt: now, updatedAt: now });
+      return sendJson(res, 201, { id, ext, url: urlFor(req, { id, ext }), createdAt: now, updatedAt: now });
     }
 
     if (!ref) return sendJson(res, 400, { error: "Use /files/{id}.{txt|json|md}" });
-    const record = normalizeRecord(await readBin(binId, { version: 1, files: {} }));
-    const stored = record.files[ref.id];
-    if (!stored || stored.ext !== ref.ext) return sendJson(res, 404, { error: "File not found" });
+    const existing = await getFile(ref.id);
+    if (!existing || existing.ext !== ref.ext) return sendJson(res, 404, { error: "File not found" });
 
     if (req.method === "DELETE") {
-      delete record.files[ref.id];
-      await writeBin(binId, record);
+      await deleteFile(ref.id, ref.ext);
       return sendJson(res, 200, { ok: true, id: ref.id });
     }
 
     const body = await readJson(req);
     const contentError = validateContent(body.content, ref.ext);
     if (contentError) return sendJson(res, 400, { error: contentError });
-    stored.content = body.content;
-    stored.updatedAt = new Date().toISOString();
-    await writeBin(binId, record);
+    const updatedAt = new Date().toISOString();
+    await updateFile(ref.id, ref.ext, body.content, updatedAt);
     return sendJson(res, 200, {
       id: ref.id,
       ext: ref.ext,
       url: urlFor(req, ref),
-      createdAt: stored.createdAt,
-      updatedAt: stored.updatedAt,
+      createdAt: existing.createdAt,
+      updatedAt,
     });
   } catch (error) {
     if (error instanceof SyntaxError) return sendJson(res, 400, { error: "Invalid JSON" });
-    return storageError(res, error);
+    return unavailable(res);
   }
 };

@@ -1,4 +1,4 @@
-# Local runtime secrets (never commit)
+# Local secrets
 .env
 .env.*
 !.env.example
@@ -7,14 +7,20 @@
 node_modules/
 .vercel/
 
-# Local private legacy config
+# Local SQLite data and journals
+/data/*.db
+/data/*.db-shm
+/data/*.db-wal
+/data/*.sqlite
+/data/*.sqlite-shm
+/data/*.sqlite-wal
+
+# Legacy local config
 /config.js
+
+# Exported browser session data (never commit)
+jsonbincookie.json
 
 # OS/editor noise
 .DS_Store
 *.log
-
-.vercel
-
-# Exported browser session data (never commit)
-jsonbincookie.json

@@ -1,23 +1,40 @@
-const { notesBinId } = require("./_lib/config");
-const { readBin, writeBin } = require("./_lib/jsonbin");
+const { publicConfig } = require("./_lib/config");
+const { listNotes, replaceNotes } = require("./_lib/database");
 const { sendJson, readJson, hasWriteAccess } = require("./_lib/http");
 
-function fail(res, error) {
-  const status = error.status === 404 ? 404 : 502;
-  sendJson(res, status, { error: status === 404 ? "Notes bin not found" : "Notes storage is unavailable" });
+function validNotes(value) {
+  if (!Array.isArray(value)) return "Expected a notes array";
+  if (value.length > 10000) return "Too many notes";
+  for (const note of value) {
+    if (!note || typeof note !== "object" || !/^[a-z0-9]{4,12}$/.test(String(note.id || ""))) {
+      return "Each note must have a valid id";
+    }
+    if (typeof note.title !== "string" || typeof note.html !== "string") {
+      return "Each note must have a string title and html body";
+    }
+    if (note.title.length > 200 || Buffer.byteLength(note.html, "utf8") > 1048576) {
+      return "A note exceeds the allowed size";
+    }
+    if (!Number.isFinite(Number(note.created)) || !Number.isFinite(Number(note.updated))) {
+      return "Each note must have numeric created and updated timestamps";
+    }
+  }
+  return "";
+}
+
+function unavailable(res) {
+  return sendJson(res, 503, { error: "Database is not configured or unavailable" });
 }
 
 module.exports = async function handler(req, res) {
-  const binId = notesBinId();
-  if (!binId) return sendJson(res, 503, { error: "Notes storage is not configured" });
+  if (!publicConfig().CLOUD_ENABLED) return unavailable(res);
 
   if (req.method === "GET") {
     try {
-      const record = await readBin(binId, { version: 1, notes: [] });
-      const notes = Array.isArray(record) ? record : (record && Array.isArray(record.notes) ? record.notes : []);
+      const notes = await listNotes();
       return sendJson(res, 200, { version: 1, notes });
     } catch (error) {
-      return fail(res, error);
+      return unavailable(res);
     }
   }
 
@@ -27,13 +44,19 @@ module.exports = async function handler(req, res) {
     try {
       const body = await readJson(req);
       const notes = Array.isArray(body) ? body : body && body.notes;
-      if (!Array.isArray(notes)) return sendJson(res, 400, { error: "Expected a notes array" });
-      if (notes.length > 10000) return sendJson(res, 413, { error: "Too many notes" });
-      await writeBin(binId, { version: 1, notes });
+      const validationError = validNotes(notes);
+      if (validationError) return sendJson(res, 400, { error: validationError });
+      await replaceNotes(notes.map((note) => ({
+        id: String(note.id),
+        title: String(note.title),
+        html: String(note.html),
+        created: Number(note.created),
+        updated: Number(note.updated),
+      })));
       return sendJson(res, 200, { ok: true });
     } catch (error) {
       if (error instanceof SyntaxError) return sendJson(res, 400, { error: "Invalid JSON" });
-      return fail(res, error);
+      return unavailable(res);
     }
   }
 
