@@ -36,7 +36,7 @@
         <div id="noteList" class="stack"></div>
 
         <div class="row row--between footer-row">
-          <p class="note grow">Notes are saved in this browser and, when cloud sync is set up, in your JSONBin so public links work for everyone. You can also Export them to <code>notes.json</code>.</p>
+          <p class="note grow">Notes are saved in this browser and, when cloud sync is set up, in the cloud database so public links work for everyone. You can also Export them to <code>notes.json</code>.</p>
           <div class="row">
             <button id="syncBtn" class="cr-btn cr-btn--secondary hidden" type="button">Sync now</button>
             <button id="exportBtn" class="cr-btn cr-btn--secondary" type="button">Export</button>
@@ -65,6 +65,13 @@
           <button id="deleteBtn" class="cr-btn cr-btn--secondary" type="button">Delete</button>
         </div>
         <div id="viewBody" class="rte cr-card"></div>
+        <div id="viewFileLinks" class="stack cr-card" style="padding:16px">
+          <span class="cr-label">Direct file links — one permanent ID, three formats</span>
+          <div class="row"><span class="note" style="min-width:3rem">.txt</span><input id="viewFileTxt" class="cr-input" readonly><button class="cr-btn cr-btn--secondary" data-copy-file="txt" type="button">Copy</button></div>
+          <div class="row"><span class="note" style="min-width:3rem">.md</span><input id="viewFileMd" class="cr-input" readonly><button class="cr-btn cr-btn--secondary" data-copy-file="md" type="button">Copy</button></div>
+          <div class="row"><span class="note" style="min-width:3rem">.json</span><input id="viewFileJson" class="cr-input" readonly><button class="cr-btn cr-btn--secondary" data-copy-file="json" type="button">Copy</button></div>
+          <p class="note" style="margin:0">These raw URLs update automatically every time the note is saved.</p>
+        </div>
         <p class="note">The public link shows only this note, with no editing. It opens for everyone once this note has synced to the cloud (or is in the project's <code>notes.json</code>). The portable link works anywhere right now, but it is longer.</p>
       </div>
     </section>
@@ -87,21 +94,16 @@
           <span class="note">Ctrl+S to save</span>
         </div>
         <div class="stack">
-          <span class="cr-label">Save as a direct file</span>
+          <span class="cr-label">Public file links (.txt · .md · .json)</span>
+          <p class="note" style="margin:0">Every saved note gets one permanent ID with raw <code>.txt</code>, <code>.md</code> and <code>.json</code> URLs. Saving the note refreshes all three automatically.</p>
           <div class="row">
-            <label class="note" for="fileFormat">Format</label>
-            <select id="fileFormat" class="cr-input" aria-label="File format">
-              <option value="txt">.txt</option>
-              <option value="json">.json</option>
-              <option value="md">.md</option>
-            </select>
-            <button id="saveFileBtn" class="cr-btn cr-btn--secondary" type="button">Save file</button>
-            <button id="deleteFileBtn" class="cr-btn cr-btn--secondary hidden" type="button">Delete file</button>
-            <button id="newFileBtn" class="cr-btn cr-btn--secondary hidden" type="button">New file</button>
+            <button id="exportFilesBtn" class="cr-btn cr-btn--primary" type="button">Publish file links</button>
+            <button id="deleteFilesBtn" class="cr-btn cr-btn--secondary hidden" type="button">Delete file links</button>
           </div>
-          <div id="fileLinkPanel" class="row hidden">
-            <input id="fileUrl" class="cr-input" type="url" readonly aria-label="Direct file URL">
-            <button id="copyFileUrlBtn" class="cr-btn cr-btn--secondary" type="button">Copy URL</button>
+          <div id="editFileLinks" class="stack hidden">
+            <div class="row"><span class="note" style="min-width:3rem">.txt</span><input id="editFileTxt" class="cr-input" readonly><button class="cr-btn cr-btn--secondary" data-copy-file="txt" data-target="edit" type="button">Copy</button></div>
+            <div class="row"><span class="note" style="min-width:3rem">.md</span><input id="editFileMd" class="cr-input" readonly><button class="cr-btn cr-btn--secondary" data-copy-file="md" data-target="edit" type="button">Copy</button></div>
+            <div class="row"><span class="note" style="min-width:3rem">.json</span><input id="editFileJson" class="cr-input" readonly><button class="cr-btn cr-btn--secondary" data-copy-file="json" data-target="edit" type="button">Copy</button></div>
           </div>
           <div class="stack">
             <label class="note" for="loadFileUrl">Open an existing file to edit or delete it</label>
@@ -110,7 +112,12 @@
               <button id="loadFileBtn" class="cr-btn cr-btn--secondary" type="button">Load file</button>
             </div>
           </div>
-          <p class="note">JSON is validated before saving. Saving the same file again updates it; changing format requires creating a new file.</p>
+          <div id="fileLinkPanel" class="row hidden">
+            <input id="fileUrl" class="cr-input" type="url" readonly aria-label="Loaded file URL">
+            <button id="copyFileUrlBtn" class="cr-btn cr-btn--secondary" type="button">Copy URL</button>
+            <button id="deleteFileBtn" class="cr-btn cr-btn--secondary" type="button">Delete file</button>
+          </div>
+          <p class="note">JSON is validated before saving. A loaded file is updated when you save the note.</p>
         </div>
       </div>
     </section>

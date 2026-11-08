@@ -37,13 +37,27 @@ async function ensureSchema() {
         created INTEGER NOT NULL,
         updated INTEGER NOT NULL
       )`);
-      await db.execute(`CREATE TABLE IF NOT EXISTS files (
-        id TEXT PRIMARY KEY,
+      const filesInfo = await db.execute("PRAGMA table_info(files)");
+      const filesExists = filesInfo.rows.length > 0;
+      const extInPk = filesInfo.rows.some((row) => String(row.name) === "ext" && Number(row.pk) > 0);
+      const createFilesTable = `CREATE TABLE files (
+        id TEXT NOT NULL,
         ext TEXT NOT NULL CHECK (ext IN ('txt', 'json', 'md')),
         content TEXT NOT NULL,
         created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL
-      )`);
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (id, ext)
+      )`;
+      if (!filesExists) {
+        await db.execute(createFilesTable);
+      } else if (!extInPk) {
+        await db.batch([
+          { sql: "ALTER TABLE files RENAME TO files_legacy", args: [] },
+          { sql: createFilesTable, args: [] },
+          { sql: "INSERT INTO files (id, ext, content, created_at, updated_at) SELECT id, ext, content, created_at, updated_at FROM files_legacy", args: [] },
+          { sql: "DROP TABLE files_legacy", args: [] },
+        ], "write");
+      }
       await db.execute("CREATE INDEX IF NOT EXISTS notes_updated_idx ON notes(updated DESC)");
     })().catch((error) => {
       schemaPromise = null;
@@ -92,11 +106,20 @@ async function createFile(file) {
   });
 }
 
-async function getFile(id) {
+async function upsertFile(file) {
+  const db = await ensureSchema();
+  await db.execute({
+    sql: `INSERT INTO files (id, ext, content, created_at, updated_at) VALUES (?, ?, ?, ?, ?)
+          ON CONFLICT(id, ext) DO UPDATE SET content = excluded.content, updated_at = excluded.updated_at`,
+    args: [file.id, file.ext, file.content, file.createdAt, file.updatedAt],
+  });
+}
+
+async function getFile(id, ext) {
   const db = await ensureSchema();
   const result = await db.execute({
-    sql: "SELECT id, ext, content, created_at, updated_at FROM files WHERE id = ?",
-    args: [id],
+    sql: "SELECT id, ext, content, created_at, updated_at FROM files WHERE id = ? AND ext = ?",
+    args: [id, ext],
   });
   const row = result.rows[0];
   return row ? {
@@ -119,10 +142,11 @@ async function updateFile(id, ext, content, updatedAt) {
 
 async function deleteFile(id, ext) {
   const db = await ensureSchema();
-  const result = await db.execute({
-    sql: "DELETE FROM files WHERE id = ? AND ext = ?",
-    args: [id, ext],
-  });
+  const result = await db.execute(
+    ext
+      ? { sql: "DELETE FROM files WHERE id = ? AND ext = ?", args: [id, ext] }
+      : { sql: "DELETE FROM files WHERE id = ?", args: [id] }
+  );
   return Number(result.rowsAffected) > 0;
 }
 
@@ -134,4 +158,4 @@ async function close() {
   }
 }
 
-module.exports = { getClient, ensureSchema, ping, listNotes, replaceNotes, createFile, getFile, updateFile, deleteFile, close };
+module.exports = { getClient, ensureSchema, ping, listNotes, replaceNotes, createFile, upsertFile, getFile, updateFile, deleteFile, close };

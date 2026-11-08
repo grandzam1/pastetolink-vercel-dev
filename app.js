@@ -186,6 +186,46 @@
     }
   });
 
+  /* ---------- direct file links (one permanent ID per note, .txt/.md/.json) ---------- */
+  const FILE_EXTS = ["txt", "md", "json"];
+
+  async function noteFileId(noteId) {
+    const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode("pastetolink-note:" + noteId));
+    return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("").slice(0, 16);
+  }
+
+  function fileUrls(fileId) {
+    const base = new URL("/files/" + fileId, location.origin).href;
+    return { txt: base + ".txt", md: base + ".md", json: base + ".json" };
+  }
+
+  function noteFileContents(n) {
+    const text = Sanitize.toText(n.html);
+    return {
+      txt: text,
+      md: markdownFromHtml(n.html),
+      json: JSON.stringify({ title: n.title, text, html: Sanitize.clean(n.html), updated: new Date(n.updated).toISOString() }, null, 2),
+    };
+  }
+
+  async function exportNoteFiles(n) {
+    if (!(window.APP_CONFIG || {}).FILES_WRITABLE) return null;
+    const res = await fetch("/api/files", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: "Bearer " + Cloud.getWriteToken() },
+      body: JSON.stringify({ noteId: n.id, contents: noteFileContents(n) }),
+    });
+    if (!res.ok) throw new Error("file export " + res.status);
+    return res.json();
+  }
+
+  function fillFileLinkInputs(prefix, urls) {
+    FILE_EXTS.forEach((ext) => {
+      const input = $(prefix + "File" + ext[0].toUpperCase() + ext.slice(1));
+      if (input) input.value = urls[ext] || "";
+    });
+  }
+
   /* ---------- VIEW ---------- */
   let current = null;
   let deleteArmed = false;
@@ -211,7 +251,29 @@
     $("viewBody").innerHTML = Sanitize.clean(n.html);
     resetDeleteBtn();
     show("view", n.title || "Untitled");
+
+    const linksPanel = $("viewFileLinks");
+    if ((window.APP_CONFIG || {}).FILES_ENABLED) {
+      linksPanel.classList.remove("hidden");
+      noteFileId(n.id).then((fileId) => {
+        if (current !== n) return;
+        fillFileLinkInputs("view", fileUrls(fileId));
+      });
+      if (Cloud.canWrite()) {
+        exportNoteFiles(n).catch(() => { /* links stay stale until next save */ });
+      }
+    } else {
+      linksPanel.classList.add("hidden");
+    }
   }
+
+  document.addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-copy-file]");
+    if (!btn) return;
+    const prefix = btn.dataset.target === "edit" ? "edit" : "view";
+    const input = $(prefix + "File" + btn.dataset.copyFile[0].toUpperCase() + btn.dataset.copyFile.slice(1));
+    if (input && input.value) copy(input.value, "." + btn.dataset.copyFile + " URL copied");
+  });
 
   $("editBtn").addEventListener("click", () => { location.hash = "#/" + current.id + "/edit"; });
   $("copyLinkBtn").addEventListener("click", () => copy(shortLink(current.id), "Public link copied"));
@@ -251,6 +313,10 @@
     }
     const gone = Store.remove(current.id);
     resetDeleteBtn();
+    if ((window.APP_CONFIG || {}).FILES_ENABLED && Cloud.canWrite()) {
+      noteFileId(current.id).then((fileId) =>
+        requestFile("/api/files?file=" + fileId + ".txt", "DELETE").catch(() => {}));
+    }
     location.hash = "#/";
     pushChanges(true);
     toast("Note deleted", "Undo", () => {
@@ -280,9 +346,15 @@
     $("titleInput").value = n ? n.title : "";
     $("fileLinkPanel").classList.add("hidden");
     $("deleteFileBtn").classList.add("hidden");
-    $("newFileBtn").classList.add("hidden");
-    $("fileFormat").disabled = false;
-    $("saveFileBtn").textContent = "Save file";
+    const links = $("editFileLinks");
+    if (id && (window.APP_CONFIG || {}).FILES_ENABLED) {
+      noteFileId(id).then((fileId) => { if (editId === id) fillFileLinkInputs("edit", fileUrls(fileId)); });
+      links.classList.remove("hidden");
+      $("deleteFilesBtn").classList.remove("hidden");
+    } else {
+      links.classList.add("hidden");
+      $("deleteFilesBtn").classList.add("hidden");
+    }
     if (!editor) {
       editor = Editor.create($("editorMount"), {
         onChange: () => { dirty = true; },
@@ -320,6 +392,13 @@
     location.hash = "#/" + note.id;
     toast("Saved");
     pushChanges();
+    exportNoteFiles(note).catch(() => {});
+    if (activeFile) {
+      try {
+        requestFile("/api/files?file=" + encodeURIComponent(activeFile.id + "." + activeFile.ext), "PUT", { content: fileContent(activeFile.ext) })
+          .catch(() => {});
+      } catch (e) { /* conversion failed; loaded file left unchanged */ }
+    }
   }
 
   $("saveBtn").addEventListener("click", save);
@@ -395,33 +474,34 @@
     activeFile = file;
     $("fileUrl").value = file.url || new URL("/files/" + file.id + "." + file.ext, location.origin).href;
     $("fileLinkPanel").classList.remove("hidden");
-    $("fileFormat").value = file.ext;
-    $("fileFormat").disabled = true;
-    $("saveFileBtn").textContent = "Update file";
     $("deleteFileBtn").classList.remove("hidden");
-    $("newFileBtn").classList.remove("hidden");
   }
 
-  $("saveFileBtn").addEventListener("click", async () => {
-    if ((window.APP_CONFIG || {}).AUTH_REQUIRED && !Cloud.getWriteToken()) { toast("Enter the write token on the notes page first."); return; }
-    if (!(window.APP_CONFIG || {}).FILES_WRITABLE) { toast("File storage and write access are not configured yet."); return; }
-    const ext = $("fileFormat").value;
-    const updating = !!activeFile;
-    let content;
+  $("exportFilesBtn").addEventListener("click", async () => {
+    if (!editId) { toast("Save the note first — its file links will appear here and on the note page."); return; }
+    if (dirty) { save(); return; }
+    const n = Store.get(editId);
+    if (!n) return;
     try {
-      content = fileContent(ext);
+      const result = await exportNoteFiles(n);
+      if (result) fillFileLinkInputs("edit", result.urls);
+      $("editFileLinks").classList.remove("hidden");
+      $("deleteFilesBtn").classList.remove("hidden");
+      toast("File links published — .txt, .md and .json are live");
     } catch (error) {
-      toast(ext === "json" ? "The editor content must be valid JSON." : "Couldn't convert the editor content.");
-      return;
+      toast("Couldn't publish the file links.");
     }
+  });
+
+  $("deleteFilesBtn").addEventListener("click", async () => {
+    if (!editId || !window.confirm("Delete all three public file links for this note? This cannot be undone.")) return;
     try {
-      const result = activeFile
-        ? await requestFile("/api/files?file=" + encodeURIComponent(activeFile.id + "." + activeFile.ext), "PUT", { content })
-        : await requestFile("/api/files", "POST", { ext, content });
-      showFileLink(result);
-      toast(updating ? "File updated" : "File saved");
+      const fileId = await noteFileId(editId);
+      await requestFile("/api/files?file=" + encodeURIComponent(fileId + ".txt"), "DELETE");
+      $("editFileLinks").classList.add("hidden");
+      toast("File links deleted");
     } catch (error) {
-      toast(error.message || "Couldn't save the file.");
+      toast("Couldn't delete the file links.");
     }
   });
 
@@ -432,23 +512,10 @@
       activeFile = null;
       $("fileLinkPanel").classList.add("hidden");
       $("deleteFileBtn").classList.add("hidden");
-      $("newFileBtn").classList.add("hidden");
-      $("fileFormat").disabled = false;
-      $("saveFileBtn").textContent = "Save file";
       toast("File deleted");
     } catch (error) {
       toast(error.message || "Couldn't delete the file.");
     }
-  });
-
-  $("newFileBtn").addEventListener("click", () => {
-    if (!window.confirm("The existing file will remain published. Start another file?")) return;
-    activeFile = null;
-    $("fileLinkPanel").classList.add("hidden");
-    $("deleteFileBtn").classList.add("hidden");
-    $("newFileBtn").classList.add("hidden");
-    $("fileFormat").disabled = false;
-    $("saveFileBtn").textContent = "Save file";
   });
 
   $("copyFileUrlBtn").addEventListener("click", () => copy($("fileUrl").value, "Direct file URL copied"));

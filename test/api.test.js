@@ -92,6 +92,30 @@ test("Markdown files use text/markdown", async () => {
   assert.equal(fetched.body, "# Heading");
 });
 
+test("note export creates txt, md and json under one permanent ID and re-export updates it", async () => {
+  const contents = { txt: "hello", md: "# hello", json: "{\"ok\":true}" };
+  const created = await call(fileHandler, request("POST", { body: { noteId: "testnote1", contents } }));
+  assert.equal(created.statusCode, 200);
+  const { id, urls } = jsonBody(created);
+  assert.match(id, /^[a-f0-9]{16}$/);
+  assert.ok(urls.txt.endsWith(id + ".txt") && urls.md.endsWith(id + ".md") && urls.json.endsWith(id + ".json"));
+
+  for (const ext of ["txt", "md", "json"]) {
+    const fetched = await call(fileHandler, request("GET", { file: `${id}.${ext}`, authorization: "" }));
+    assert.equal(fetched.statusCode, 200);
+    assert.equal(fetched.body, contents[ext]);
+  }
+
+  const again = await call(fileHandler, request("POST", { body: { noteId: "testnote1", contents: { ...contents, txt: "v2" } } }));
+  assert.equal(jsonBody(again).id, id);
+  const updated = await call(fileHandler, request("GET", { file: `${id}.txt`, authorization: "" }));
+  assert.equal(updated.body, "v2");
+
+  await call(fileHandler, request("DELETE", { file: `${id}.txt` }));
+  const gone = await call(fileHandler, request("GET", { file: `${id}.md`, authorization: "" }));
+  assert.equal(gone.statusCode, 404);
+});
+
 test("write operations require the app token while public file GET does not", async () => {
   const denied = await call(fileHandler, request("POST", {
     body: { ext: "md", content: "# test" },

@@ -1,6 +1,7 @@
 const crypto = require("node:crypto");
 const { env, publicConfig } = require("./_lib/config");
-const { createFile, getFile, updateFile, deleteFile } = require("./_lib/database");
+const { createFile, upsertFile, getFile, updateFile, deleteFile } = require("./_lib/database");
+const { noteFileId } = require("./_lib/ids");
 const { setCors, sendJson, readJson, hasWriteAccess, preflight } = require("./_lib/http");
 
 const TYPES = {
@@ -53,8 +54,8 @@ module.exports = async function handler(req, res) {
   if (req.method === "GET") {
     if (!ref) return sendJson(res, 400, { error: "Use /files/{id}.{txt|json|md}" });
     try {
-      const stored = await getFile(ref.id);
-      if (!stored || stored.ext !== ref.ext) {
+      const stored = await getFile(ref.id, ref.ext);
+      if (!stored) {
         setCors(res);
         return sendJson(res, 404, { error: "File not found" });
       }
@@ -77,6 +78,26 @@ module.exports = async function handler(req, res) {
   try {
     if (req.method === "POST") {
       const body = await readJson(req);
+
+      // Note export: one note ID produces all three formats under one permanent file ID.
+      if (body.noteId !== undefined) {
+        const noteId = String(body.noteId || "").trim();
+        if (!/^[a-z0-9]{4,12}$/.test(noteId)) return sendJson(res, 400, { error: "Invalid note id" });
+        const contents = body.contents && typeof body.contents === "object" ? body.contents : {};
+        const now = new Date().toISOString();
+        for (const ext of Object.keys(TYPES)) {
+          const contentError = validateContent(contents[ext], ext);
+          if (contentError) return sendJson(res, 400, { error: `${ext}: ${contentError}` });
+        }
+        const id = noteFileId(noteId);
+        for (const ext of Object.keys(TYPES)) {
+          await upsertFile({ id, ext, content: contents[ext], createdAt: now, updatedAt: now });
+        }
+        const urls = {};
+        for (const ext of Object.keys(TYPES)) urls[ext] = urlFor(req, { id, ext });
+        return sendJson(res, 200, { id, urls, updatedAt: now });
+      }
+
       const ext = String(body.ext || body.format || "").replace(/^\./, "").toLowerCase();
       if (!TYPES[ext]) return sendJson(res, 400, { error: "Format must be txt, json, or md" });
       const contentError = validateContent(body.content, ext);
@@ -89,11 +110,11 @@ module.exports = async function handler(req, res) {
     }
 
     if (!ref) return sendJson(res, 400, { error: "Use /files/{id}.{txt|json|md}" });
-    const existing = await getFile(ref.id);
-    if (!existing || existing.ext !== ref.ext) return sendJson(res, 404, { error: "File not found" });
+    const existing = await getFile(ref.id, ref.ext);
+    if (!existing) return sendJson(res, 404, { error: "File not found" });
 
     if (req.method === "DELETE") {
-      await deleteFile(ref.id, ref.ext);
+      await deleteFile(ref.id);
       return sendJson(res, 200, { ok: true, id: ref.id });
     }
 
