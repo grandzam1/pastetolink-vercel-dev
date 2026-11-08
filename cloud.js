@@ -40,7 +40,7 @@
 
   root.Cloud = {
     enabled: () => !!config().CLOUD_ENABLED,
-    canWrite: () => !!config().CLOUD_WRITABLE && !!token(),
+    canWrite: () => !!config().CLOUD_WRITABLE && (!config().AUTH_REQUIRED || !!token()),
     read,
     write,
     getWriteToken: token,

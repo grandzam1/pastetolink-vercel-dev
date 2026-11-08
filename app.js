@@ -112,6 +112,8 @@
     toast(s === "synced" ? "Up to date" : BADGES[s] ? BADGES[s][0] : "Done");
   });
 
+  const apiSettings = $("apiSettings");
+  if (apiSettings && !(window.APP_CONFIG || {}).AUTH_REQUIRED) apiSettings.classList.add("hidden");
   const writeTokenInput = $("writeToken");
   writeTokenInput.value = Cloud.getWriteToken();
   writeTokenInput.addEventListener("input", () => {
@@ -401,7 +403,7 @@
   }
 
   $("saveFileBtn").addEventListener("click", async () => {
-    if (!Cloud.getWriteToken()) { toast("Enter the write token on the notes page first."); return; }
+    if ((window.APP_CONFIG || {}).AUTH_REQUIRED && !Cloud.getWriteToken()) { toast("Enter the write token on the notes page first."); return; }
     if (!(window.APP_CONFIG || {}).FILES_WRITABLE) { toast("File storage and write access are not configured yet."); return; }
     const ext = $("fileFormat").value;
     const updating = !!activeFile;

@@ -17,12 +17,12 @@ function writeToken() {
 
 function publicConfig() {
   const enabled = Boolean(tursoDatabaseUrl());
-  const canWrite = enabled && Boolean(writeToken());
   return {
     CLOUD_ENABLED: enabled,
-    CLOUD_WRITABLE: canWrite,
+    CLOUD_WRITABLE: enabled,
     FILES_ENABLED: enabled,
-    FILES_WRITABLE: canWrite,
+    FILES_WRITABLE: enabled,
+    AUTH_REQUIRED: Boolean(writeToken()),
   };
 }
 
