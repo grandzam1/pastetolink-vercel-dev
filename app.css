@@ -2,6 +2,8 @@
 
 body {
   margin: 0;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
 
 .app {
@@ -139,14 +141,27 @@ a.cr-btn {
   outline-offset: 2px;
 }
 
-#viewFileLinks > .row {
+#viewFileLinks > .row,
+#editFileLinks > .row {
   display: grid;
   grid-template-columns: 3rem minmax(0, 1fr) auto;
 }
 
-#viewFileLinks .cr-input {
+.cr-input {
   box-sizing: border-box;
   min-width: 0;
+}
+
+#edit .row > .cr-input {
+  flex: 1 1 200px;
+  width: auto;
+  max-width: 100%;
+}
+
+#editorMount,
+#editorMount .cm-editor {
+  min-width: 0;
+  max-width: 100%;
 }
 
 /* ---------- rich text (editor and reader share these styles) ---------- */
@@ -324,6 +339,19 @@ a.cr-btn {
 
 .toast-act {
   padding: 4px 10px;
+}
+
+@media (max-width: 768px) {
+  input,
+  textarea,
+  select,
+  [contenteditable="true"] {
+    font-size: max(16px, 1em);
+  }
+
+  #editorMount .cm-editor {
+    max-height: clamp(220px, 50svh, 354px);
+  }
 }
 
 @media (max-width: 520px) {
