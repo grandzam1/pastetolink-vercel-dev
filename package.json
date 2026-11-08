@@ -4,15 +4,25 @@
   "private": true,
   "description": "Static Paste to Link app with SQLite/Turso persistence",
   "scripts": {
+    "build:editor": "esbuild editor-codemirror.js --bundle --minify --format=iife --target=es2020 --outfile=editor-codemirror.bundle.js",
     "dev": "node dev-server.js",
     "dev:vercel": "npx --yes vercel@latest dev",
     "test": "node --test",
     "start": "node dev-server.js"
   },
   "dependencies": {
+    "@codemirror/commands": "6.8.1",
+    "@codemirror/lang-html": "6.4.9",
+    "@codemirror/language": "6.11.3",
+    "@codemirror/state": "6.5.2",
+    "@codemirror/view": "6.38.6",
+    "@lezer/highlight": "1.2.1",
     "@libsql/client": "^0.18.0"
   },
   "engines": {
     "node": ">=20"
+  },
+  "devDependencies": {
+    "esbuild": "0.25.10"
   }
 }

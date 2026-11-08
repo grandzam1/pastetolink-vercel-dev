@@ -249,7 +249,9 @@ a.cr-btn {
 }
 
 .rte-editable {
-  min-height: 320px;
+  height: 320px;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
   padding: 16px;
   background: var(--c-panel);
   color: var(--c-text);
