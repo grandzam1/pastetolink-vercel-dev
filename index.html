@@ -55,7 +55,7 @@
           <h1 id="viewTitle" class="cr-h1"></h1>
           <p id="viewMeta" class="note" style="margin-top:8px"></p>
         </div>
-        <div class="row">
+        <div class="note-actions">
           <button id="editBtn" class="cr-btn cr-btn--primary" type="button">Edit</button>
           <button id="copyLinkBtn" class="cr-btn cr-btn--secondary" type="button" title="Copies the public, read-only link">Copy public link</button>
           <button id="previewBtn" class="cr-btn cr-btn--secondary" type="button">Preview public page</button>
@@ -64,7 +64,7 @@
           <button id="downloadBtn" class="cr-btn cr-btn--secondary" type="button">Download .txt</button>
           <button id="deleteBtn" class="cr-btn cr-btn--secondary" type="button">Delete</button>
         </div>
-        <div id="viewBody" class="rte cr-card"></div>
+        <div id="viewBody" class="rte cr-card" tabindex="0" role="region" aria-labelledby="viewTitle"></div>
         <div id="viewFileLinks" class="stack cr-card" style="padding:16px">
           <span class="cr-label">Direct file links — one permanent ID, three formats</span>
           <div class="row"><span class="note" style="min-width:3rem">.txt</span><input id="viewFileTxt" class="cr-input" readonly><button class="cr-btn cr-btn--secondary" data-copy-file="txt" type="button">Copy</button></div>

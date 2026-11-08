@@ -251,6 +251,7 @@
     $("viewBody").innerHTML = Sanitize.clean(n.html);
     resetDeleteBtn();
     show("view", n.title || "Untitled");
+    $("viewBody").scrollTop = 0;
 
     const linksPanel = $("viewFileLinks");
     if ((window.APP_CONFIG || {}).FILES_ENABLED) {
